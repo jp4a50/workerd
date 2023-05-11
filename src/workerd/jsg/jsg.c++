@@ -157,8 +157,10 @@ void Lock::requestGcForTesting() const {
     KJ_LOG(ERROR, "Test GC used while not in a test");
     return;
   }
+  KJ_DBG("Collecting garbage");
   v8Isolate->RequestGarbageCollectionForTesting(
     v8::Isolate::GarbageCollectionType::kFullGarbageCollection);
+  KJ_DBG("Garbage collection done");
 }
 
 kj::StringPtr Lock::getUuid() const {

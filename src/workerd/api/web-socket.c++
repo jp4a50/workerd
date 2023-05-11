@@ -337,6 +337,7 @@ WebSocket::Accepted::Accepted(
           LOG_EXCEPTION("webSocketWhenAborted", e);
         }
       }).then([this, &native]() {
+        KJ_DBG("WebSocket::Accepted whenAbortedTask");
         // Other end disconnected prematurely. We may be able to clean up our state.
         native.outgoingAborted = true;
         if (!native.isPumping && native.closedIncoming) {
@@ -366,6 +367,7 @@ WebSocket::Accepted::Accepted(
 }
 
 WebSocket::Accepted::~Accepted() noexcept(false) {
+  KJ_DBG("Destroying WebSocket::Accepted");
   KJ_IF_MAYBE(a, actorMetrics) {
     a->get()->webSocketClosed();
   }
@@ -398,6 +400,7 @@ void WebSocket::startReadLoop(jsg::Lock& js) {
   // request otherwise ends when the client disconnects, and the read loop will also end when the
   // client disconnects -- we just want to ensure that they happen in the right order.
   //
+  // TODO: is the below relevant to our bug?
   // TODO(bug): Using waitUntil() for this purpose is only correct for WebSockets originating from
   //   the eyeball. For an outgoing WebSocket, we should just do addTask(). Alternatively, perhaps
   //   we need to adjust the cancellation logic to wait for whenThreadIdle() before cancelling,
@@ -409,6 +412,7 @@ void WebSocket::startReadLoop(jsg::Lock& js) {
   //   accepted locally is implemented completely in JavaScript space, using jsg::Promise instead
   //   of kj::Promise, and then only use awaitIo() on truely remote WebSockets.
   // TODO(cleanup): Should addWaitUntil() take jsg::Promise instead of kj::Promise?
+  KJ_DBG("Adding websocket waitUntil()");
   context.addWaitUntil(context.awaitJs(context.awaitIoLegacy(kj::mv(promise))
       .then(js, [this, thisHandle = JSG_THIS]
                 (jsg::Lock& js, kj::Maybe<kj::Exception>&& maybeError) mutable {
@@ -423,6 +427,7 @@ void WebSocket::startReadLoop(jsg::Lock& js) {
           // There are no further messages to send, so we can discard the underlying connection.
           auto& native = *farNative;
           KJ_ASSERT(native.state.is<Accepted>());
+          KJ_DBG("CHANGING FROM ACCEPTED TO RELEASED");
           native.state.init<Released>();
         }
       } else {
@@ -432,6 +437,7 @@ void WebSocket::startReadLoop(jsg::Lock& js) {
       }
     }
   })));
+  KJ_DBG("Added websocket waitUntil()");
 }
 
 void WebSocket::send(jsg::Lock& js, kj::OneOf<kj::Array<byte>, kj::String> message) {
@@ -474,6 +480,7 @@ void WebSocket::send(jsg::Lock& js, kj::OneOf<kj::Array<byte>, kj::String> messa
 
 void WebSocket::close(
     jsg::Lock& js, jsg::Optional<int> code, jsg::Optional<kj::String> reason) {
+  KJ_DBG(">>> EXPLICIT CALL TO WebSocket::close()");
   auto& native = *farNative;
 
   // Handle close before connection is established for websockets obtained through `new WebSocket()`.
@@ -599,6 +606,7 @@ void WebSocket::ensurePumping(jsg::Lock& js) {
       } else if (native.closedIncoming && native.closedOutgoing) {
         if (native.state.is<Accepted>()) {
           // Native WebSocket no longer needed; release.
+          KJ_DBG("to released inside ensurePumping");
           native.state.init<Released>();
         } else if (native.state.is<Released>()) {
           // While we were awaiting the jsg::Promise, someone else released our state. That's fine.
@@ -716,6 +724,7 @@ kj::Promise<void> WebSocket::readLoop(kj::WebSocket& ws) {
           if ((native.closedOutgoing || native.outgoingAborted) && !native.isPumping) {
             // Native WebSocket no longer needed; release.
             KJ_ASSERT(native.state.is<Accepted>());
+            KJ_DBG("accepted to released upon close");
             native.state.init<Released>();
           }
           return kj::READY_NOW;
@@ -766,6 +775,8 @@ void WebSocket::reportError(jsg::Lock& js, jsg::Value err) {
       }
 
       // We're no longer pumping so let's make sure we release the native connection here.
+
+      KJ_DBG("to released upon error");
       native.state.init<Released>();
     }
   }

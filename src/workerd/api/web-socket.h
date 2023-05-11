@@ -322,6 +322,13 @@ private:
   //   web socket.
   // - Transitions from `Accepted` to `Released` when outgoing pump is done and either both
   //   directions have seen "close" messages or an error has occured.
+public:
+  ~WebSocket() {
+    KJ_DBG("Before destroyed native");
+    farNative = nullptr;
+    KJ_DBG("After destroyed native");
+  }
+private:
 
   kj::Maybe<jsg::Value> error;
   // If any error has occurred.

@@ -264,6 +264,7 @@ void IoContext::IncomingRequest::delivered() {
 }
 
 IoContext::IncomingRequest::~IoContext_IncomingRequest() noexcept(false) {
+  KJ_DBG("~IoContext_IncomingRequest start");
   if (!wasDelivered) {
     // Request was never added to context->incomingRequests in the first place.
     return;
@@ -286,6 +287,7 @@ IoContext::IncomingRequest::~IoContext_IncomingRequest() noexcept(false) {
   }
   context->worker->getIsolate().completedRequest();
   metrics->jsDone();
+  KJ_DBG("~IoContext_IncomingRequest finish");
 }
 
 IoContext::~IoContext() noexcept(false) {
@@ -446,6 +448,7 @@ void IoContext::addTask(kj::Promise<void> promise) {
 }
 
 void IoContext::addWaitUntil(kj::Promise<void> promise) {
+  KJ_DBG("Calling addWaitUntil()");
   if (actor == nullptr) {
     // This metric won't work correctly in actors since it's being tracked per-request, but tasks
     // are not tied to requests in actors. So we just skip it in actors.
@@ -484,7 +487,9 @@ kj::Promise<void> IoContext::IncomingRequest::drain() {
     timeoutPromise = timeoutPromise.exclusiveJoin(kj::mv(drainPaf.promise));
   } else {
     // For non-actor requests, apply the configured soft timeout, typically 30 seconds.
-    timeoutPromise = context->limitEnforcer->limitDrain();
+    timeoutPromise = context->limitEnforcer->limitDrain().then([]() {
+      KJ_DBG("HIT THE DRAIN SOFT TIMEOUT");
+    });
   }
   return context->waitUntilTasks.onEmpty().exclusiveJoin(kj::mv(timeoutPromise))
       .exclusiveJoin(context->abortPromise.addBranch().then([]{}, [](kj::Exception&&){}));
